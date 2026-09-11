@@ -1,0 +1,49 @@
+.copilot-chat-marker-button {
+  font-family: var(--font-interface);
+  font-size: 15px;
+  line-height: 1;
+}
+
+.copilot-chat-marker-button.is-marked {
+  color: var(--text-accent);
+  background: var(--background-modifier-hover);
+}
+
+.copilot-chat-marker-settings-intro {
+  color: var(--text-muted);
+  margin-bottom: 1rem;
+}
+
+.copilot-chat-marker-setting {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  margin: 0 0 0.75rem;
+  padding: 0.25rem 0.75rem;
+}
+
+.copilot-chat-marker-setting .setting-item {
+  border-top: 0;
+}
+
+.copilot-chat-marker-setting .setting-item-info {
+  min-width: 8rem;
+}
+
+.copilot-chat-marker-setting textarea {
+  min-height: 4.5rem;
+  width: min(32rem, 100%);
+}
+
+.copilot-chat-marker-compatibility {
+  border-radius: var(--radius-s);
+  margin: 0.75rem 0 1rem;
+  padding: 0.75rem;
+}
+
+.copilot-chat-marker-compatibility.is-compatible {
+  background: rgba(var(--color-green-rgb), 0.12);
+}
+
+.copilot-chat-marker-compatibility.is-incompatible {
+  background: rgba(var(--color-orange-rgb), 0.14);
+}

@@ -1,0 +1,10 @@
+{
+  "id": "copilot-chat-marker",
+  "name": "Chat Marker for Copilot",
+  "version": "0.1.0",
+  "minAppVersion": "1.8.0",
+  "description": "Mark the active Copilot Agent chat and quietly attach the marker meaning to the next message.",
+  "author": "SoulBits Vibe",
+  "authorUrl": "https://github.com/SoulBits-Vibe",
+  "isDesktopOnly": true
+}
