@@ -14,18 +14,11 @@ const PATCH_PROPERTY = "__copilotChatMarkerOriginalRunTurn";
 
 const DEFAULT_MARKERS = [
   {
-    id: "progress",
-    icon: "👍",
-    title: "Progress",
+    id: "important",
+    icon: "⭐",
+    title: "Important",
     instruction:
-      "This chat is making useful progress. Continue in the current direction unless the user changes it.",
-  },
-  {
-    id: "idea",
-    icon: "💡",
-    title: "Worth revisiting",
-    instruction:
-      "Treat this as an idea worth revisiting, not as a settled decision or commitment.",
+      "This chat is marked as important. Keep the main issue visible and prioritize it when relevant.",
   },
   {
     id: "question",
@@ -35,30 +28,37 @@ const DEFAULT_MARKERS = [
       "An important question remains unresolved. Keep the uncertainty visible and help resolve it.",
   },
   {
-    id: "radar",
-    icon: "👁️",
-    title: "On my radar",
+    id: "idea",
+    icon: "💡",
+    title: "Idea",
     instruction:
-      "Keep this on the user's radar without treating it as urgent or decided.",
+      "Treat this as an idea to explore, not as a settled decision or commitment.",
   },
   {
-    id: "explain",
-    icon: "🧠",
-    title: "Above my understanding",
+    id: "in-progress",
+    icon: "🚧",
+    title: "In progress",
     instruction:
-      "The current material is above the user's understanding. Use plainer language, smaller steps, and define necessary terms.",
+      "Work on this chat is in progress. Continue from the current state and keep unfinished steps visible.",
   },
   {
-    id: "idle",
-    icon: "💤",
-    title: "Idle",
+    id: "waiting",
+    icon: "⏳",
+    title: "Waiting",
     instruction:
-      "This chat was intentionally parked for a later return. Re-establish the immediate context before advancing it.",
+      "This chat is waiting on information, a decision, or an external action. Keep the dependency visible and do not assume it is resolved.",
+  },
+  {
+    id: "review",
+    icon: "👀",
+    title: "Review",
+    instruction:
+      "This chat needs review. Check the current material carefully and surface anything that needs attention or confirmation.",
   },
   {
     id: "done",
     icon: "✅",
-    title: "Finished",
+    title: "Done",
     instruction:
       "The chat's intended outcome is complete. Do not invent additional work unless the user reopens the direction.",
   },
@@ -113,6 +113,7 @@ class CopilotChatMarkerPlugin extends Plugin {
     this.compatibilityMessage = "Waiting for Copilot Agent.";
     this.compatible = false;
     this.saveTimer = null;
+    this.pendingMarkerRefreshIds = new Set();
     this.refreshFrame = null;
 
     this.addSettingTab(new CopilotChatMarkerSettingTab(this.app, this));
@@ -147,6 +148,7 @@ class CopilotChatMarkerPlugin extends Plugin {
   onunload() {
     this.unloaded = true;
     if (this.saveTimer) window.clearTimeout(this.saveTimer);
+    this.pendingMarkerRefreshIds.clear();
     if (this.refreshFrame) window.cancelAnimationFrame(this.refreshFrame);
     this.refreshScheduled = false;
     if (this.managerUnsubscribe) this.managerUnsubscribe();
@@ -559,12 +561,33 @@ class CopilotChatMarkerPlugin extends Plugin {
     });
   }
 
-  queueSave() {
+  queueSave(markerId = null) {
+    if (markerId) this.pendingMarkerRefreshIds.add(markerId);
     if (this.saveTimer) window.clearTimeout(this.saveTimer);
-    this.saveTimer = window.setTimeout(() => {
+    this.saveTimer = window.setTimeout(async () => {
       this.saveTimer = null;
-      void this.saveSettings();
+      await this.saveSettings();
+      const markerIds = [...this.pendingMarkerRefreshIds];
+      this.pendingMarkerRefreshIds.clear();
+      for (const pendingMarkerId of markerIds) {
+        await this.refreshActiveMarkerTitle(pendingMarkerId);
+      }
     }, 150);
+  }
+
+  async refreshActiveMarkerTitle(markerId) {
+    const marker = this.getMarker(markerId);
+    const session = this.getActiveSession();
+    const state = this.getActiveState();
+    if (!marker || !session || state?.markerId !== markerId || !this.manager) {
+      return;
+    }
+
+    const markedTitle = `${marker.icon} ${state.baseLabel}`.trimStart();
+    this.manager.renameSession(session.internalId, markedTitle);
+    await this.manager.saveActiveSession();
+    await this.updateHistoryTitle(session, markedTitle);
+    this.updateToolbarButtons();
   }
 
   async saveSettings() {
@@ -612,7 +635,7 @@ class CopilotChatMarkerSettingTab extends PluginSettingTab {
         cls: "copilot-chat-marker-setting",
       });
 
-      new Setting(group)
+      const markerHeading = new Setting(group)
         .setName(`Marker ${index + 1}`)
         .setDesc(`${marker.icon || "◇"} ${marker.title}`)
         .addExtraButton((button) =>
@@ -657,18 +680,29 @@ class CopilotChatMarkerSettingTab extends PluginSettingTab {
             })
         );
 
-      new Setting(group).setName("Icon").addText((text) =>
-        text.setValue(marker.icon).onChange(async (value) => {
-          marker.icon = value.trim();
-          await this.plugin.saveSettings();
-          this.plugin.updateToolbarButtons();
-        })
-      );
+      const refreshMarkerHeading = () =>
+        markerHeading.setDesc(`${marker.icon || "◇"} ${marker.title}`);
+
+      new Setting(group)
+        .setName("Icon")
+        .setDesc(
+          "Use a Unicode emoji. Open the emoji picker with Control–Command–Space on macOS or Windows key + . (period) on Windows. On Linux, use your desktop's emoji picker or paste an emoji. The stars on a new marker are only a placeholder."
+        )
+        .addText((text) =>
+          text.setValue(marker.icon).onChange(async (value) => {
+            marker.icon = value.trim();
+            refreshMarkerHeading();
+            this.plugin.updateToolbarButtons();
+            this.plugin.queueSave(marker.id);
+          })
+        );
 
       new Setting(group).setName("Title").addText((text) =>
-        text.setValue(marker.title).onChange(async (value) => {
+        text.setValue(marker.title).onChange((value) => {
           marker.title = value.trim() || "Marker";
-          await this.plugin.saveSettings();
+          refreshMarkerHeading();
+          this.plugin.updateToolbarButtons();
+          this.plugin.queueSave();
         })
       );
 
@@ -676,9 +710,9 @@ class CopilotChatMarkerSettingTab extends PluginSettingTab {
         .setName("Agent instruction")
         .setDesc("Quietly attached to the next real message.")
         .addTextArea((text) =>
-          text.setValue(marker.instruction).onChange(async (value) => {
+          text.setValue(marker.instruction).onChange((value) => {
             marker.instruction = value.trim();
-            await this.plugin.saveSettings();
+            this.plugin.queueSave();
           })
         );
     });

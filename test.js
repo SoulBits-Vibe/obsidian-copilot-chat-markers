@@ -102,6 +102,26 @@ async function run() {
     "idea"
   );
 
+  let renamedTitle = "";
+  let historyTitle = "";
+  plugin.manager = {
+    getActiveSession: () => session,
+    renameSession: (_internalId, title) => {
+      renamedTitle = title;
+    },
+    saveActiveSession: async () => {},
+  };
+  plugin.updateHistoryTitle = async (_session, title) => {
+    historyTitle = title;
+  };
+  plugin.updateToolbarButtons = () => {};
+  plugin.settings.markers.find((marker) => marker.id === "idea").icon = "🧩";
+
+  await plugin.refreshActiveMarkerTitle("idea");
+
+  assert.equal(renamedTitle, "🧩 A useful conversation");
+  assert.equal(historyTitle, "🧩 A useful conversation");
+
   console.log("Chat Marker core tests passed.");
 }
 

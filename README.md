@@ -14,18 +14,45 @@ marker:
 The visible user message and saved Markdown transcript are not modified by the
 hidden instruction.
 
+## Screenshots
+
+### Marker chooser
+
+The marker chooser sits beside Copilot's **Chat History** button.
+
+![Marker chooser beside the Copilot Chat History button](assets/marker-chooser.png)
+
+### Marked chat titles
+
+Markers remain visible in open tabs and Copilot's Recent Chats list.
+
+![Marker icons in Copilot chat tabs and Recent Chats](assets/marked-chat-history.png)
+
 ## Default markers
 
-- 👍 Progress
-- 💡 Worth revisiting
+- ⭐ Important
 - ❓ Question
-- 👁️ On my radar
-- 🧠 Above my understanding
-- 💤 Idle
-- ✅ Finished
+- 💡 Idea
+- 🚧 In progress
+- ⏳ Waiting
+- 👀 Review
+- ✅ Done
+
+## Customize markers
 
 Markers can be added, renamed, re-iconed, reordered, or removed under
 **Settings → Chat Marker for Copilot**. Their agent instructions are editable.
+
+Marker icons are standard Unicode emoji because they also appear in chat
+titles. The `✨` shown on a new marker is only a placeholder.
+
+- macOS: press `Control–Command–Space` to open the emoji picker.
+- Windows: press `Windows key + .` (period) to open the emoji panel.
+- Linux: use the emoji picker provided by the desktop environment or paste an
+  emoji into the field.
+
+Obsidian uses Lucide icons for interface controls, but Lucide icon names do not
+work in the marker field.
 
 ## Compatibility and safety
 
