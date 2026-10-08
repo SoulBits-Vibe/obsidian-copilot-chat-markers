@@ -1,10 +1,11 @@
 {
   "id": "copilot-chat-marker",
   "name": "Chat Marker for Copilot",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "minAppVersion": "1.8.0",
   "description": "Mark active Copilot Agent chats and search their saved conversation contents.",
   "author": "SoulBits Vibe",
   "authorUrl": "https://github.com/SoulBits-Vibe",
+  "repository": "https://github.com/SoulBits-Vibe/obsidian-copilot-chat-markers",
   "isDesktopOnly": true
 }

@@ -72,7 +72,7 @@ backend session. Removing or disabling this plugin does not delete chats.
 
 ## Installation
 
-Download `copilot-chat-marker-0.2.0.zip` from [Releases](https://github.com/SoulBits-Vibe/obsidian-copilot-chat-markers/releases/latest), then copy `main.js`, `manifest.json`, and `styles.css` into:
+Download the release files from [Releases](https://github.com/SoulBits-Vibe/obsidian-copilot-chat-markers/releases/latest), then copy `main.js`, `manifest.json`, and `styles.css` into:
 
 ```text
 <vault>/.obsidian/plugins/copilot-chat-marker/
