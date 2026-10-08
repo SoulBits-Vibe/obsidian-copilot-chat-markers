@@ -9,6 +9,103 @@
   background: var(--background-modifier-hover);
 }
 
+.copilot-chat-search-modal {
+  max-width: 44rem;
+}
+
+.copilot-chat-search-input {
+  box-sizing: border-box;
+  font-size: var(--font-ui-medium);
+  margin-bottom: 0.5rem;
+  width: 100%;
+}
+
+.copilot-chat-search-status {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-bottom: 0.5rem;
+}
+
+.copilot-chat-search-results {
+  max-height: min(60vh, 36rem);
+  overflow-y: auto;
+}
+
+.copilot-chat-search-result {
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  padding: 0.65rem 0.75rem;
+}
+
+.copilot-chat-search-result:hover,
+.copilot-chat-search-result.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.copilot-chat-search-result-title {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.copilot-chat-search-result-date {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  margin-top: 0.1rem;
+}
+
+.copilot-chat-search-result-excerpt {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-tight);
+  margin-top: 0.3rem;
+}
+
+.copilot-chat-search-native-hidden {
+  display: none !important;
+}
+
+.copilot-chat-inline-results {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.copilot-chat-inline-result {
+  border-bottom: 1px solid var(--background-modifier-border);
+  cursor: pointer;
+  padding: 0.55rem 0.65rem;
+}
+
+.copilot-chat-inline-result:hover,
+.copilot-chat-inline-result.is-selected {
+  background: var(--background-modifier-hover);
+}
+
+.copilot-chat-inline-title {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.copilot-chat-inline-date {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  margin-top: 0.1rem;
+}
+
+.copilot-chat-inline-excerpt {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-tight);
+  margin-top: 0.25rem;
+}
+
+.copilot-chat-inline-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  padding: 0.75rem;
+  text-align: center;
+}
+
 .copilot-chat-marker-settings-intro {
   color: var(--text-muted);
   margin-bottom: 1rem;

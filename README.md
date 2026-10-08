@@ -14,6 +14,11 @@ marker:
 The visible user message and saved Markdown transcript are not modified by the
 hidden instruction.
 
+It also upgrades Copilot's existing **Search chats...** field on the Recent
+Chats screen. The same field searches the conversations that belong in that
+list by title and full message text, then reopens the selected conversation in
+Copilot. It does not use Obsidian's search index or Miyo.
+
 ## Screenshots
 
 ### Marker chooser

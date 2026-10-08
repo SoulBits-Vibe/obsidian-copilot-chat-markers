@@ -1,5 +1,6 @@
 const {
   Menu,
+  Modal,
   Notice,
   Plugin,
   PluginSettingTab,
@@ -11,6 +12,7 @@ const PLUGIN_ID = "copilot-chat-marker";
 const COPILOT_ID = "copilot";
 const AGENT_VIEW_TYPE = "copilot-agent-chat-view";
 const PATCH_PROPERTY = "__copilotChatMarkerOriginalRunTurn";
+const CHAT_FOLDER = "system/copilot/copilot-conversations";
 
 const DEFAULT_MARKERS = [
   {
@@ -91,6 +93,214 @@ function normalizeMarker(raw, index) {
   };
 }
 
+function chatMatchesQuery(chat, query) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return false;
+  return `${chat.title}\n${chat.content}`.toLowerCase().includes(needle);
+}
+
+function makeChatExcerpt(content, query, radius = 90) {
+  const needle = query.trim().toLowerCase();
+  const lower = content.toLowerCase();
+  const index = lower.indexOf(needle);
+  if (!needle || index < 0) return "";
+
+  const start = Math.max(0, index - radius);
+  const end = Math.min(content.length, index + needle.length + radius);
+  const excerpt = content
+    .slice(start, end)
+    .replace(/^---[\s\S]*?---\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${start > 0 ? "…" : ""}${excerpt}${end < content.length ? "…" : ""}`;
+}
+
+class CopilotChatSearchModal extends Modal {
+  constructor(app, plugin) {
+    super(app);
+    this.plugin = plugin;
+    this.chats = [];
+    this.selectedIndex = 0;
+  }
+
+  onOpen() {
+    const { contentEl } = this;
+    contentEl.addClass("copilot-chat-search-modal");
+    contentEl.createEl("h2", { text: "Search Copilot chats" });
+
+    this.inputEl = contentEl.createEl("input", {
+      cls: "copilot-chat-search-input",
+      attr: {
+        type: "search",
+        placeholder: "Search message text and titles…",
+        "aria-label": "Search Copilot chat contents",
+      },
+    });
+    this.statusEl = contentEl.createDiv({
+      cls: "copilot-chat-search-status",
+      text: "Loading Copilot chats…",
+    });
+    this.resultsEl = contentEl.createDiv({
+      cls: "copilot-chat-search-results",
+    });
+
+    this.inputEl.addEventListener("input", () => {
+      this.selectedIndex = 0;
+      this.renderResults();
+    });
+    this.inputEl.addEventListener("keydown", (event) =>
+      this.handleKeydown(event)
+    );
+
+    void this.loadChats();
+    window.setTimeout(() => this.inputEl.focus(), 0);
+  }
+
+  onClose() {
+    this.contentEl.empty();
+  }
+
+  async loadChats() {
+    try {
+      const listing = await this.app.vault.adapter.list(CHAT_FOLDER);
+      const paths = listing.files.filter((path) => path.endsWith(".md"));
+      const chats = await Promise.all(
+        paths.map(async (path) => {
+          const content = await this.app.vault.adapter.read(path);
+          const file = this.app.vault.getAbstractFileByPath(path);
+          const frontmatter = file
+            ? this.app.metadataCache.getFileCache(file)?.frontmatter
+            : null;
+          return {
+            path,
+            file,
+            title:
+              frontmatter?.topic ||
+              frontmatter?.agentLabel ||
+              file?.basename ||
+              path.split("/").pop()?.replace(/\.md$/, "") ||
+              path,
+            content,
+            modified: file?.stat?.mtime || 0,
+          };
+        })
+      );
+      this.chats = chats.sort((a, b) => b.modified - a.modified);
+      this.statusEl.setText(`${this.chats.length} Copilot chats ready`);
+      this.renderResults();
+    } catch (error) {
+      console.error("[Chat Marker] Failed to load Copilot chats", error);
+      this.statusEl.setText(`Could not read ${CHAT_FOLDER}`);
+    }
+  }
+
+  getMatches() {
+    const query = this.inputEl?.value || "";
+    if (!query.trim()) return [];
+    return this.chats.filter((chat) => chatMatchesQuery(chat, query));
+  }
+
+  renderResults() {
+    if (!this.resultsEl || !this.inputEl) return;
+    this.resultsEl.empty();
+    const query = this.inputEl.value;
+
+    if (!query.trim()) {
+      this.statusEl.setText(
+        this.chats.length
+          ? `${this.chats.length} Copilot chats ready`
+          : "Loading Copilot chats…"
+      );
+      return;
+    }
+
+    const matches = this.getMatches();
+    this.selectedIndex = Math.min(
+      this.selectedIndex,
+      Math.max(0, matches.length - 1)
+    );
+    this.statusEl.setText(
+      `${matches.length} ${matches.length === 1 ? "chat" : "chats"} found`
+    );
+
+    for (const [index, chat] of matches.entries()) {
+      const result = this.resultsEl.createDiv({
+        cls:
+          "copilot-chat-search-result" +
+          (index === this.selectedIndex ? " is-selected" : ""),
+        attr: { tabindex: "0" },
+      });
+      result.createDiv({
+        cls: "copilot-chat-search-result-title",
+        text: chat.title,
+      });
+      result.createDiv({
+        cls: "copilot-chat-search-result-date",
+        text: chat.modified
+          ? new Date(chat.modified).toLocaleString()
+          : chat.path,
+      });
+      result.createDiv({
+        cls: "copilot-chat-search-result-excerpt",
+        text: makeChatExcerpt(chat.content, query),
+      });
+      result.addEventListener("mouseenter", () => {
+        this.selectedIndex = index;
+        this.updateSelection();
+      });
+      result.addEventListener("click", () => void this.openChat(chat));
+      result.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") void this.openChat(chat);
+      });
+    }
+  }
+
+  updateSelection() {
+    this.resultsEl
+      ?.querySelectorAll(".copilot-chat-search-result")
+      .forEach((result, index) =>
+        result.classList.toggle("is-selected", index === this.selectedIndex)
+      );
+  }
+
+  handleKeydown(event) {
+    const matches = this.getMatches();
+    if (!matches.length) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      this.selectedIndex = Math.min(this.selectedIndex + 1, matches.length - 1);
+      this.updateSelection();
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      this.selectedIndex = Math.max(this.selectedIndex - 1, 0);
+      this.updateSelection();
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      void this.openChat(matches[this.selectedIndex]);
+    }
+  }
+
+  async openChat(chat) {
+    try {
+      const manager = this.plugin.getManager();
+      if (chat.file && typeof manager?.loadSessionFromHistory === "function") {
+        await manager.loadSessionFromHistory(chat.file);
+        const leaf = this.app.workspace.getLeavesOfType(AGENT_VIEW_TYPE)[0];
+        if (leaf) await this.app.workspace.revealLeaf(leaf);
+      } else if (chat.file) {
+        await this.app.workspace.getLeaf(true).openFile(chat.file);
+      } else {
+        throw new Error("Chat file is unavailable.");
+      }
+      this.close();
+    } catch (error) {
+      console.error("[Chat Marker] Failed to open Copilot chat", error);
+      new Notice("Could not open that Copilot chat.");
+    }
+  }
+}
+
 class CopilotChatMarkerPlugin extends Plugin {
   async onload() {
     this.unloaded = false;
@@ -115,6 +325,8 @@ class CopilotChatMarkerPlugin extends Plugin {
     this.saveTimer = null;
     this.pendingMarkerRefreshIds = new Set();
     this.refreshFrame = null;
+    this.chatSearchIndex = null;
+    this.chatSearchIndexPromise = null;
 
     this.addSettingTab(new CopilotChatMarkerSettingTab(this.app, this));
 
@@ -158,6 +370,14 @@ class CopilotChatMarkerPlugin extends Plugin {
     document
       .querySelectorAll(".copilot-chat-marker-button")
       .forEach((button) => button.remove());
+    document
+      .querySelectorAll(".copilot-chat-inline-results")
+      .forEach((results) => results.remove());
+    document
+      .querySelectorAll(".copilot-chat-search-native-hidden")
+      .forEach((element) =>
+        element.classList.remove("copilot-chat-search-native-hidden")
+      );
   }
 
   scheduleRefresh() {
@@ -215,7 +435,11 @@ class CopilotChatMarkerPlugin extends Plugin {
       this.restorePatchedSessions();
       this.manager = validation.ok ? manager : null;
       this.managerUnsubscribe = this.manager
-        ? this.manager.subscribe(() => this.scheduleRefresh())
+        ? this.manager.subscribe(() => {
+            this.chatSearchIndex = null;
+            this.chatSearchIndexPromise = null;
+            this.scheduleRefresh();
+          })
         : null;
     }
 
@@ -227,6 +451,7 @@ class CopilotChatMarkerPlugin extends Plugin {
 
     this.injectToolbarButtons();
     this.updateToolbarButtons();
+    this.integrateChatHistorySearch();
   }
 
   getSessionKey(session) {
@@ -460,9 +685,20 @@ class CopilotChatMarkerPlugin extends Plugin {
   }
 
   async updateHistoryTitle(session, title) {
-    const path = this.manager?.sessionState?.get(session?.internalId)?.path;
-    if (!path || typeof this.manager?.updateChatTitle !== "function") return;
-    await this.manager.updateChatTitle(path, title);
+    if (!session || typeof this.manager?.updateChatTitle !== "function") return;
+
+    const ids =
+      typeof this.manager.recentChatIdsForSession === "function"
+        ? this.manager.recentChatIdsForSession(session.internalId, session)
+        : [
+            this.manager.getSessionSourcePath?.(session.internalId) ||
+              this.manager.sessionState?.get(session.internalId)?.path,
+          ];
+
+    for (const id of [...new Set(ids.filter(Boolean))]) {
+      await this.manager.updateChatTitle(id, title);
+    }
+    this.manager.notify?.();
   }
 
   openMarkerMenu(event) {
@@ -508,6 +744,231 @@ class CopilotChatMarkerPlugin extends Plugin {
     }
   }
 
+  integrateChatHistorySearch() {
+    const inputs = document.querySelectorAll(
+      `.workspace-leaf-content[data-type="${AGENT_VIEW_TYPE}"] input[placeholder="Search chats..."]`
+    );
+
+    for (const input of inputs) {
+      const searchWrapper = input.closest(".tw-p-1");
+      const root = searchWrapper?.parentElement;
+      if (!searchWrapper || !root) continue;
+
+      if (!input.dataset.copilotChatContentSearchBound) {
+        input.dataset.copilotChatContentSearchBound = "true";
+        input.addEventListener("input", () => {
+          window.setTimeout(() => void this.renderChatHistorySearch(input), 0);
+        });
+        input.addEventListener("keydown", (event) =>
+          this.handleChatHistorySearchKeydown(input, event)
+        );
+      }
+
+      if (
+        input.value.trim() &&
+        !root.querySelector(":scope > .copilot-chat-inline-results")
+      ) {
+        void this.renderChatHistorySearch(input);
+      }
+    }
+  }
+
+  async loadChatSearchIndex() {
+    if (this.chatSearchIndex) return this.chatSearchIndex;
+    if (this.chatSearchIndexPromise) return this.chatSearchIndexPromise;
+
+    this.chatSearchIndexPromise = (async () => {
+      const manager = this.getManager();
+      if (typeof manager?.getChatHistoryItems !== "function") return [];
+      const projectId = manager.getActiveProjectId?.();
+      const items = await manager.getChatHistoryItems(projectId);
+      const chats = await Promise.all(
+        items
+          .filter(
+            (item) =>
+              typeof item?.id === "string" &&
+              item.id.startsWith(`${CHAT_FOLDER}/`) &&
+              item.id.endsWith(".md")
+          )
+          .map(async (item) => {
+            const content = await this.app.vault.adapter.read(item.id);
+            return {
+              path: item.id,
+              file: this.app.vault.getAbstractFileByPath(item.id),
+              title: item.title || item.id,
+              content,
+              modified: new Date(
+                item.lastAccessedAt || item.createdAt || 0
+              ).getTime(),
+            };
+          })
+      );
+      this.chatSearchIndex = chats.sort((a, b) => b.modified - a.modified);
+      this.chatSearchIndexPromise = null;
+      return this.chatSearchIndex;
+    })().catch((error) => {
+      this.chatSearchIndexPromise = null;
+      throw error;
+    });
+
+    return this.chatSearchIndexPromise;
+  }
+
+  clearChatHistorySearch(input) {
+    const searchWrapper = input.closest(".tw-p-1");
+    const root = searchWrapper?.parentElement;
+    if (!root) return;
+    root
+      .querySelector(":scope > .copilot-chat-inline-results")
+      ?.remove();
+    root
+      .querySelectorAll(":scope > .copilot-chat-search-native-hidden")
+      .forEach((element) =>
+        element.classList.remove("copilot-chat-search-native-hidden")
+      );
+    input.__copilotChatMatches = [];
+    input.__copilotChatSelectedIndex = 0;
+  }
+
+  async renderChatHistorySearch(input) {
+    const query = input.value.trim();
+    if (!query) {
+      this.clearChatHistorySearch(input);
+      return;
+    }
+
+    const searchWrapper = input.closest(".tw-p-1");
+    const root = searchWrapper?.parentElement;
+    if (!searchWrapper || !root) return;
+
+    let chats;
+    try {
+      chats = await this.loadChatSearchIndex();
+    } catch (error) {
+      console.error("[Chat Marker] Failed to search Copilot chats", error);
+      new Notice("Could not search Copilot chat contents.");
+      return;
+    }
+    if (input.value.trim() !== query) return;
+
+    const matches = chats.filter((chat) => chatMatchesQuery(chat, query));
+    input.__copilotChatMatches = matches;
+    input.__copilotChatSelectedIndex = Math.min(
+      input.__copilotChatSelectedIndex || 0,
+      Math.max(0, matches.length - 1)
+    );
+
+    root
+      .querySelector(":scope > .copilot-chat-inline-results")
+      ?.remove();
+    const results = document.createElement("div");
+    results.className = "copilot-chat-inline-results";
+    results.setAttribute("aria-live", "polite");
+    searchWrapper.insertAdjacentElement("afterend", results);
+
+    for (const child of root.children) {
+      if (child !== searchWrapper && child !== results) {
+        child.classList.add("copilot-chat-search-native-hidden");
+      }
+    }
+
+    if (!matches.length) {
+      results.createDiv({
+        cls: "copilot-chat-inline-empty",
+        text: "No matching chat contents",
+      });
+      return;
+    }
+
+    for (const [index, chat] of matches.entries()) {
+      const row = results.createDiv({
+        cls:
+          "copilot-chat-inline-result" +
+          (index === input.__copilotChatSelectedIndex ? " is-selected" : ""),
+        attr: { tabindex: "0" },
+      });
+      row.createDiv({
+        cls: "copilot-chat-inline-title",
+        text: chat.title,
+      });
+      row.createDiv({
+        cls: "copilot-chat-inline-date",
+        text: chat.modified ? new Date(chat.modified).toLocaleString() : chat.path,
+      });
+      row.createDiv({
+        cls: "copilot-chat-inline-excerpt",
+        text: makeChatExcerpt(chat.content, query),
+      });
+      row.addEventListener("mouseenter", () => {
+        input.__copilotChatSelectedIndex = index;
+        this.updateChatHistorySearchSelection(input);
+      });
+      row.addEventListener("click", () => void this.openChatSearchResult(chat));
+      row.addEventListener("keydown", (event) => {
+        if (event.key === "Enter") void this.openChatSearchResult(chat);
+      });
+    }
+  }
+
+  updateChatHistorySearchSelection(input) {
+    const searchWrapper = input.closest(".tw-p-1");
+    const root = searchWrapper?.parentElement;
+    root
+      ?.querySelectorAll(
+        ":scope > .copilot-chat-inline-results .copilot-chat-inline-result"
+      )
+      .forEach((result, index) =>
+        result.classList.toggle(
+          "is-selected",
+          index === input.__copilotChatSelectedIndex
+        )
+      );
+  }
+
+  handleChatHistorySearchKeydown(input, event) {
+    const matches = input.__copilotChatMatches || [];
+    if (!matches.length) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      event.stopPropagation();
+      input.__copilotChatSelectedIndex = Math.min(
+        (input.__copilotChatSelectedIndex || 0) + 1,
+        matches.length - 1
+      );
+      this.updateChatHistorySearchSelection(input);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      event.stopPropagation();
+      input.__copilotChatSelectedIndex = Math.max(
+        (input.__copilotChatSelectedIndex || 0) - 1,
+        0
+      );
+      this.updateChatHistorySearchSelection(input);
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      event.stopPropagation();
+      void this.openChatSearchResult(
+        matches[input.__copilotChatSelectedIndex || 0]
+      );
+    }
+  }
+
+  async openChatSearchResult(chat) {
+    try {
+      const manager = this.getManager();
+      if (!chat.file || typeof manager?.loadSessionFromHistory !== "function") {
+        throw new Error("Copilot chat loader is unavailable.");
+      }
+      await manager.loadSessionFromHistory(chat.file);
+      const leaf = this.app.workspace.getLeavesOfType(AGENT_VIEW_TYPE)[0];
+      if (leaf) await this.app.workspace.revealLeaf(leaf);
+    } catch (error) {
+      console.error("[Chat Marker] Failed to open Copilot chat", error);
+      new Notice("Could not open that Copilot chat.");
+    }
+  }
+
   injectToolbarButtons() {
     const views = document.querySelectorAll(
       `.workspace-leaf-content[data-type="${AGENT_VIEW_TYPE}"]`
@@ -519,27 +980,22 @@ class CopilotChatMarkerPlugin extends Plugin {
         historyButton = view.querySelector("svg.lucide-history")?.closest("button");
       }
       if (!historyButton?.parentElement) continue;
-      if (
-        historyButton.parentElement.querySelector(
-          ":scope > .copilot-chat-marker-button"
-        )
-      ) {
-        continue;
+      const parent = historyButton.parentElement;
+      if (!parent.querySelector(":scope > .copilot-chat-marker-button")) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className =
+          "clickable-icon copilot-chat-marker-button tw-size-7 tw-text-faint";
+        button.setAttribute("aria-label", "Mark current chat");
+        button.title = "Mark current chat";
+        button.addEventListener("click", (clickEvent) => {
+          clickEvent.preventDefault();
+          clickEvent.stopPropagation();
+          this.openMarkerMenu(clickEvent);
+        });
+
+        parent.insertBefore(button, historyButton);
       }
-
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className =
-        "clickable-icon copilot-chat-marker-button tw-size-7 tw-text-faint";
-      button.setAttribute("aria-label", "Mark current chat");
-      button.title = "Mark current chat";
-      button.addEventListener("click", (clickEvent) => {
-        clickEvent.preventDefault();
-        clickEvent.stopPropagation();
-        this.openMarkerMenu(clickEvent);
-      });
-
-      historyButton.parentElement.insertBefore(button, historyButton);
     }
   }
 
@@ -747,5 +1203,7 @@ class CopilotChatMarkerSettingTab extends PluginSettingTab {
       );
   }
 }
+
+CopilotChatMarkerPlugin._test = { chatMatchesQuery, makeChatExcerpt };
 
 module.exports = CopilotChatMarkerPlugin;

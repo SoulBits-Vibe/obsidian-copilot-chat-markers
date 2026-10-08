@@ -6,6 +6,7 @@ Module._load = function (request, parent, isMain) {
   if (request === "obsidian") {
     return {
       Menu: class {},
+      Modal: class {},
       Notice: class {},
       Plugin: class {},
       PluginSettingTab: class {},
@@ -21,6 +22,32 @@ Module._load = originalLoad;
 
 async function run() {
   const plugin = new ChatMarkerPlugin();
+  const { chatMatchesQuery, makeChatExcerpt } = ChatMarkerPlugin._test;
+  assert.equal(
+    chatMatchesQuery(
+      { title: "Vault buddy", content: "The Immich OCR job is running." },
+      "immich"
+    ),
+    true
+  );
+  assert.equal(
+    chatMatchesQuery(
+      { title: "Immich Picker", content: "Albums are working." },
+      "picker"
+    ),
+    true
+  );
+  assert.equal(
+    chatMatchesQuery(
+      { title: "Vault buddy", content: "The OCR job is running." },
+      "immich"
+    ),
+    false
+  );
+  assert.match(
+    makeChatExcerpt("Before the Immich OCR result after", "immich"),
+    /Immich OCR result/
+  );
   plugin.settings = {
     markers: [
       {
@@ -121,6 +148,41 @@ async function run() {
 
   assert.equal(renamedTitle, "🧩 A useful conversation");
   assert.equal(historyTitle, "🧩 A useful conversation");
+
+  plugin.updateHistoryTitle =
+    ChatMarkerPlugin.prototype.updateHistoryTitle.bind(plugin);
+  const updatedHistoryIds = [];
+  let historyNotifications = 0;
+  plugin.manager = {
+    recentChatIdsForSession: (internalId, activeSession) => {
+      assert.equal(internalId, "internal-1");
+      assert.equal(activeSession, session);
+      return [
+        "system/copilot/copilot-conversations/example.md",
+        "copilot-agent-session://codex/session-1",
+      ];
+    },
+    updateChatTitle: async (id, title) => {
+      updatedHistoryIds.push([id, title]);
+    },
+    notify: () => {
+      historyNotifications++;
+    },
+  };
+
+  await plugin.updateHistoryTitle(session, "🧩 A useful conversation");
+
+  assert.deepEqual(updatedHistoryIds, [
+    [
+      "system/copilot/copilot-conversations/example.md",
+      "🧩 A useful conversation",
+    ],
+    [
+      "copilot-agent-session://codex/session-1",
+      "🧩 A useful conversation",
+    ],
+  ]);
+  assert.equal(historyNotifications, 1);
 
   console.log("Chat Marker core tests passed.");
 }
