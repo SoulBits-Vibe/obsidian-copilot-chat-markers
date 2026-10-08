@@ -1,7 +1,7 @@
 {
   "id": "copilot-chat-marker",
   "name": "Chat Marker for Copilot",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "minAppVersion": "1.8.0",
   "description": "Mark active Copilot Agent chats and search their saved conversation contents.",
   "author": "SoulBits Vibe",

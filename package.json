@@ -1,6 +1,6 @@
 {
   "name": "copilot-chat-marker",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "private": true,
   "description": "A companion plugin that adds live chat markers and local conversation search to Obsidian Copilot Agent.",
   "author": "SoulBits Vibe",

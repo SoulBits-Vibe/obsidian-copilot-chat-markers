@@ -24,6 +24,8 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Remove generated output before building
+        run: node -e 'require("node:fs").rmSync("main.js", {force:true})'
       - run: npm run build
       - run: npm run check
       - run: npm test
